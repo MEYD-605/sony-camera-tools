@@ -97,24 +97,29 @@ class SonyMultiCamHandler(FTPHandler):
 
 def start_server():
     authorizer = DummyAuthorizer()
+    
+    # 1. Full Access to Whole SSD NAS for Cx File Explorer & Browsing
+    authorizer.add_user("clubs", "clubs2026", NAS_DIR, perm="elradfmwMT")
+    
+    # 2. Camera Ingest Users
     authorizer.add_user("sony", "clubsxai", INCOMING_DIR, perm="elradfmwMT")
-    authorizer.add_anonymous(INCOMING_DIR, perm="elradfmwMT")
+    authorizer.add_anonymous(NAS_DIR, perm="elradfmwMT")
 
     handler = SonyMultiCamHandler
     handler.authorizer = authorizer
-    handler.banner = "=== MACLAB SSD NAS MULTI-CAMERA INGEST READY ==="
+    handler.banner = "=== MACLAB SSD NAS READY ==="
     handler.passive_ports = range(60000, 60050)
 
     server = FTPServer(("0.0.0.0", 2121), handler)
     server.max_cons = 30
     server.max_cons_per_ip = 10
 
-    print("🚀 NAS Multi-Camera Auto-Organizer Started!")
-    print(f"📁 Root Storage: {NAS_DIR}")
-    print(f"📂 Structure: Events/<YYYY-MM-DD>/<งานที่ N>/<Sony_A7C | Sony_A7III>/")
+    print("🚀 NAS Photo Hub Server Started with new User 'clubs'!")
+    print(f"📁 Root Storage for 'clubs': {NAS_DIR}")
+    print(f"📂 Event Archive: {EVENTS_DIR}/<YYYY-MM-DD>/<งานที่ N>/<Sony_A7C | Sony_A7III>/")
     print("🌐 LAN IP: ftp://10.70.199.95:2121")
     print("🔒 Tailscale: ftp://100.83.0.1:2121")
-    print("🔑 User: sony / Pass: clubsxai")
+    print("🔑 User: clubs / Pass: clubs2026")
     sys.stdout.flush()
 
     server.serve_forever()
