@@ -9,12 +9,11 @@ from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 
-# Base Storage Paths (configurable via environment variables)
+# Base Storage Paths (Root of External SSD)
 NAS_DIR = os.getenv("NAS_STORAGE_DIR", "/Volumes/Club S/NAS_Photo_Hub")
-INCOMING_DIR = os.path.join(NAS_DIR, "Incoming")
 RAW_FILES_DIR = os.path.join(NAS_DIR, "Raw file")
 
-os.makedirs(INCOMING_DIR, exist_ok=True)
+os.makedirs(NAS_DIR, exist_ok=True)
 os.makedirs(RAW_FILES_DIR, exist_ok=True)
 
 # Tracking session state
@@ -36,7 +35,6 @@ def get_camera_model_from_file(file_path):
             model_tag = tags.get("Image Model")
             if model_tag:
                 model_str = str(model_tag.values).strip().replace(" ", "_")
-                # Friendly aliases
                 if "ILCE-7C" in model_str:
                     return "Sony_A7C"
                 elif "ILCE-7M3" in model_str or "ILCE-7RM3" in model_str:
@@ -88,11 +86,12 @@ class SonyMultiCamHandler(FTPHandler):
 
         dest_path = os.path.join(camera_folder, filename)
 
-        # Move file from Incoming to sorted Camera folder inside Event
-        shutil.move(file_path, dest_path)
+        # Move file into sorted Camera folder inside Event
+        if os.path.abspath(file_path) != os.path.abspath(dest_path):
+            shutil.move(file_path, dest_path)
 
         now_str = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 Raw file/{today_str_folder(event_base_folder)}/{os.path.basename(event_base_folder)}/{cam_model}/" if False else f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 Raw file/{os.path.basename(event_base_folder)}/{cam_model}/")
+        print(f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 Raw file/{os.path.basename(event_base_folder)}/{cam_model}/")
         sys.stdout.flush()
 
 def start_server():
@@ -103,11 +102,9 @@ def start_server():
     ingest_user = os.getenv("FTP_INGEST_USER", "sony")
     ingest_pass = os.getenv("FTP_INGEST_PASSWORD", "clubsxai")
 
-    # 1. Full Access to Whole SSD NAS for Cx File Explorer & Browsing
+    # Both users get full access to the Root Directory
     authorizer.add_user(admin_user, admin_pass, NAS_DIR, perm="elradfmwMT")
-    
-    # 2. Camera Ingest Users
-    authorizer.add_user(ingest_user, ingest_pass, INCOMING_DIR, perm="elradfmwMT")
+    authorizer.add_user(ingest_user, ingest_pass, NAS_DIR, perm="elradfmwMT")
     authorizer.add_anonymous(NAS_DIR, perm="elradfmwMT")
 
     handler = SonyMultiCamHandler
