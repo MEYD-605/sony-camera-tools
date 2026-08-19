@@ -12,10 +12,10 @@ from pyftpdlib.servers import FTPServer
 # Base Storage Paths (configurable via environment variables)
 NAS_DIR = os.getenv("NAS_STORAGE_DIR", "/Volumes/Club S/NAS_Photo_Hub")
 INCOMING_DIR = os.path.join(NAS_DIR, "Incoming")
-EVENTS_DIR = os.path.join(NAS_DIR, "Events")
+RAW_FILES_DIR = os.path.join(NAS_DIR, "Raw file")
 
 os.makedirs(INCOMING_DIR, exist_ok=True)
-os.makedirs(EVENTS_DIR, exist_ok=True)
+os.makedirs(RAW_FILES_DIR, exist_ok=True)
 
 # Tracking session state
 SESSION_STATE = {
@@ -64,7 +64,7 @@ def get_or_create_event_folder():
         SESSION_STATE["session_index"] += 1
         time_tag = now.strftime("%H%M")
         folder_name = f"{today_str}_งานที่{SESSION_STATE['session_index']}_{time_tag}"
-        target_dir = os.path.join(EVENTS_DIR, today_str, folder_name)
+        target_dir = os.path.join(RAW_FILES_DIR, today_str, folder_name)
         os.makedirs(target_dir, exist_ok=True)
         SESSION_STATE["current_event_dir"] = target_dir
         print(f"\n📁 [NEW EVENT SESSION CREATED]: {folder_name}")
@@ -92,7 +92,7 @@ class SonyMultiCamHandler(FTPHandler):
         shutil.move(file_path, dest_path)
 
         now_str = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 {os.path.basename(event_base_folder)}/{cam_model}/")
+        print(f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 Raw file/{today_str_folder(event_base_folder)}/{os.path.basename(event_base_folder)}/{cam_model}/" if False else f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 Raw file/{os.path.basename(event_base_folder)}/{cam_model}/")
         sys.stdout.flush()
 
 def start_server():
@@ -124,7 +124,7 @@ def start_server():
 
     print(f"🚀 NAS Photo Hub Server Started on {host}:{port}!")
     print(f"📁 Storage Root: {NAS_DIR}")
-    print(f"📂 Event Archive: {EVENTS_DIR}/<YYYY-MM-DD>/<งานที่ N>/<Sony_A7C | Sony_A7III>/")
+    print(f"📂 RAW Archive: {RAW_FILES_DIR}/<YYYY-MM-DD>/<งานที่ N>/<Sony_A7C | Sony_A7III>/")
     print(f"🔑 Admin User: {admin_user} | Ingest User: {ingest_user}")
     sys.stdout.flush()
 
