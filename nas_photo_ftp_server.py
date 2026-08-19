@@ -4,6 +4,7 @@ import time
 import shutil
 import datetime
 import logging
+import exifread
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
@@ -26,6 +27,26 @@ SESSION_STATE = {
 
 # Session Gap threshold: 30 minutes between shots = New Session / New Job
 SESSION_GAP_SECONDS = 30 * 60
+
+def get_camera_model_from_file(file_path):
+    """Extract camera model name (e.g. ILCE-7C, ILCE-7M3) from RAW/JPEG metadata"""
+    try:
+        with open(file_path, "rb") as f:
+            tags = exifread.process_file(f, stop_tag="Image Model", details=False)
+            model_tag = tags.get("Image Model")
+            if model_tag:
+                model_str = str(model_tag.values).strip().replace(" ", "_")
+                # Friendly aliases
+                if "ILCE-7C" in model_str:
+                    return "Sony_A7C"
+                elif "ILCE-7M3" in model_str or "ILCE-7RM3" in model_str:
+                    return "Sony_A7III"
+                elif "ILCE-7M4" in model_str or "ILCE-7RM4" in model_str:
+                    return "Sony_A7IV"
+                return model_str
+    except Exception as e:
+        pass
+    return "Camera_Unsorted"
 
 def get_or_create_event_folder():
     now = datetime.datetime.now()
@@ -51,21 +72,27 @@ def get_or_create_event_folder():
     SESSION_STATE["last_photo_time"] = current_timestamp
     return SESSION_STATE["current_event_dir"]
 
-class SonyAutoSortHandler(FTPHandler):
+class SonyMultiCamHandler(FTPHandler):
     def on_file_received(self, file_path):
         filename = os.path.basename(file_path)
         if filename.startswith("."):
             return
 
         size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        event_folder = get_or_create_event_folder()
-        dest_path = os.path.join(event_folder, filename)
+        event_base_folder = get_or_create_event_folder()
 
-        # Move file from Incoming to sorted Event folder
+        # Detect Camera Model from RAW/JPEG Exif header (e.g. Sony_A7C / Sony_A7III)
+        cam_model = get_camera_model_from_file(file_path)
+        camera_folder = os.path.join(event_base_folder, cam_model)
+        os.makedirs(camera_folder, exist_ok=True)
+
+        dest_path = os.path.join(camera_folder, filename)
+
+        # Move file from Incoming to sorted Camera folder inside Event
         shutil.move(file_path, dest_path)
 
         now_str = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"📸 [{now_str}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 {os.path.basename(event_folder)}")
+        print(f"📸 [{now_str}] [{cam_model}] Moved: {filename} ({size_mb:.2f} MB) ➔ 📁 {os.path.basename(event_base_folder)}/{cam_model}/")
         sys.stdout.flush()
 
 def start_server():
@@ -73,18 +100,18 @@ def start_server():
     authorizer.add_user("sony", "clubsxai", INCOMING_DIR, perm="elradfmwMT")
     authorizer.add_anonymous(INCOMING_DIR, perm="elradfmwMT")
 
-    handler = SonyAutoSortHandler
+    handler = SonyMultiCamHandler
     handler.authorizer = authorizer
-    handler.banner = "=== MACLAB SSD NAS PHOTO HUB AUTO-ORGANIZER READY ==="
+    handler.banner = "=== MACLAB SSD NAS MULTI-CAMERA INGEST READY ==="
     handler.passive_ports = range(60000, 60050)
 
     server = FTPServer(("0.0.0.0", 2121), handler)
-    server.max_cons = 20
-    server.max_cons_per_ip = 5
+    server.max_cons = 30
+    server.max_cons_per_ip = 10
 
-    print("🚀 NAS Photo Hub Auto-Organizer Started!")
+    print("🚀 NAS Multi-Camera Auto-Organizer Started!")
     print(f"📁 Root Storage: {NAS_DIR}")
-    print(f"📂 Event Archive: {EVENTS_DIR}/<YYYY-MM-DD>/<งานที่ N>/")
+    print(f"📂 Structure: Events/<YYYY-MM-DD>/<งานที่ N>/<Sony_A7C | Sony_A7III>/")
     print("🌐 LAN IP: ftp://10.70.199.95:2121")
     print("🔒 Tailscale: ftp://100.83.0.1:2121")
     print("🔑 User: sony / Pass: clubsxai")
