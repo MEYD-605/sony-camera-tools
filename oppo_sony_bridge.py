@@ -2,69 +2,60 @@
 import os
 import sys
 import time
-import datetime
-import ftplib
+import subprocess
 import threading
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 
-# Folder on OPPO Phone Storage
-LOCAL_FOLDER = "/sdcard/Pictures/SonyRaw"
-os.makedirs(LOCAL_FOLDER, exist_ok=True)
+PHONE_STORAGE_DIR = "/sdcard/Pictures/SonyRaw"
+os.makedirs(PHONE_STORAGE_DIR, exist_ok=True)
 
-# Maclab SSD NAS over Tailscale
-MACLAB_IP = "100.83.0.1"
-MACLAB_PORT = 2121
+MACLAB_TARGET = "admin@100.83.0.1:/Users/admin/NAS_Photo_Hub/"
 
-def do_upload(file_path):
+def sync_file_to_mac(file_path):
     filename = os.path.basename(file_path)
     if filename.startswith("."):
         return
     
-    # Wait briefly for file write to complete
-    time.sleep(0.5)
-    
-    size_mb = os.path.getsize(file_path) / (1024 * 1024)
-    now_str = datetime.datetime.now().strftime("%H:%M:%S")
-    print(f"📸 [{now_str}] Received on OPPO: {filename} ({size_mb:.2f} MB)")
-    print(f"🚀 [{now_str}] Syncing {filename} to Maclab SSD NAS...")
-    sys.stdout.flush()
-
+    cmd = [
+        "rsync", "-avz",
+        "-e", "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10",
+        file_path,
+        MACLAB_TARGET
+    ]
     try:
-        ftp = ftplib.FTP()
-        ftp.connect(MACLAB_IP, MACLAB_PORT, timeout=20)
-        ftp.login("sony", "clubsxai")
-        with open(file_path, "rb") as f:
-            ftp.storbinary(f"STOR {filename}", f)
-        ftp.quit()
-        print(f"✅ [{now_str}] {filename} Synced to Maclab SSD NAS Successfully!")
+        subprocess.run(cmd, check=True)
+        print(f"✅ Fast Rsync {filename} to Maclab SSD complete!")
     except Exception as e:
-        print(f"⚠️ [{now_str}] Sync error to Maclab: {e}")
-    sys.stdout.flush()
+        print(f"⚠️ Rsync error for {filename}: {e}")
 
-class DirectPhoneHandler(FTPHandler):
+class FastBridgeHandler(FTPHandler):
     def on_file_received(self, file_path):
-        threading.Thread(target=do_upload, args=(file_path,), daemon=True).start()
+        size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        filename = os.path.basename(file_path)
+        print(f"📸 [PHONE RECEIVED]: {filename} ({size_mb:.2f} MB)")
+        threading.Thread(target=sync_file_to_mac, args=(file_path,), daemon=True).start()
 
 def main():
     authorizer = DummyAuthorizer()
-    authorizer.add_user("sony", "clubsxai", LOCAL_FOLDER, perm="elradfmwMT")
-    authorizer.add_anonymous(LOCAL_FOLDER, perm="elradfmwMT")
+    authorizer.add_user("sony", "clubsxai", PHONE_STORAGE_DIR, perm="elradfmwMT")
+    authorizer.add_anonymous(PHONE_STORAGE_DIR, perm="elradfmwMT")
 
-    handler = DirectPhoneHandler
+    handler = FastBridgeHandler
     handler.authorizer = authorizer
-    handler.banner = "=== OPPO SONY DIRECT SYNC HUB READY ==="
+    handler.banner = "=== OPPO SONY FAST SYNC READY ==="
     handler.passive_ports = range(50000, 50050)
 
     server = FTPServer(("0.0.0.0", 2121), handler)
     server.max_cons = 20
     server.max_cons_per_ip = 5
 
-    print("🚀 OPPO Sony Bridge Service is LIVE on port 2121!")
-    print(f"📁 Local Phone Folder: {LOCAL_FOLDER}")
-    print(f"🔒 Auto-Sync Destination: ftp://{MACLAB_IP}:{MACLAB_PORT} (Maclab SSD)")
+    print("🚀 OPPO Fast Sync Service is LIVE on port 2121!")
+    print(f"📁 Local Storage: {PHONE_STORAGE_DIR}")
+    print(f"🔒 Destination: {MACLAB_TARGET}")
     sys.stdout.flush()
+
     server.serve_forever()
 
 if __name__ == "__main__":
